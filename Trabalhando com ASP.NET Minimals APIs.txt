@@ -1,0 +1,222 @@
+Com o ASP.NET Core 6 e posteriores, você pode criar APIs mínimas que simplificam a criação de endpoints. Vou guiá-lo na criação de um sistema de agendamento de tarefas usando Minimal APIs com Entity Framework.
+
+### Etapa 1: Configuração do Projeto
+
+1. **Criar um novo projeto ASP.NET Core:**
+   - Abra o Visual Studio e crie um novo projeto ASP.NET Core Web Application.
+   - Escolha a opção "ASP.NET Core Empty" para criar um projeto vazio.
+
+2. **Adicionar o Entity Framework:**
+   - No Console do Gerenciador de Pacotes, instale os pacotes necessários:
+     ```sh
+     Install-Package Microsoft.EntityFrameworkCore
+     Install-Package Microsoft.EntityFrameworkCore.SqlServer
+     Install-Package Microsoft.EntityFrameworkCore.Tools
+     ```
+
+### Etapa 2: Criar o Modelo de Dados
+
+Defina a entidade `Tarefa`.
+
+```csharp
+public class Tarefa
+{
+    public int Id { get; set; }
+    public string Titulo { get; set; }
+    public string Descricao { get; set; }
+    public DateTime Data { get; set; }
+    public bool Concluida { get; set; }
+}
+```
+
+### Etapa 3: Configurar o DbContext
+
+Crie um `AppDbContext` para gerenciar a conexão com o banco de dados e incluir a entidade `Tarefa`.
+
+```csharp
+public class AppDbContext : DbContext
+{
+    public DbSet<Tarefa> Tarefas { get; set; }
+
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    {
+    }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        // Configurações adicionais de mapeamento (se necessário)
+    }
+}
+```
+
+### Etapa 4: Configurar a Conexão com o Banco de Dados
+
+No arquivo `appsettings.json`, configure a string de conexão com o banco de dados SQL Server.
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=AgendamentoDB;Trusted_Connection=True;MultipleActiveResultSets=true"
+  }
+}
+```
+
+No arquivo `Program.cs`, configure o serviço do `DbContext` e adicione as minimal APIs:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Adicionar serviços ao contêiner.
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+var app = builder.Build();
+
+// Mapear endpoints
+app.MapGet("/tarefas", async (AppDbContext db) =>
+{
+    return await db.Tarefas.ToListAsync();
+});
+
+app.MapGet("/tarefas/{id}", async (int id, AppDbContext db) =>
+{
+    return await db.Tarefas.FindAsync(id)
+        is Tarefa tarefa ? Results.Ok(tarefa) : Results.NotFound();
+});
+
+app.MapPost("/tarefas", async (Tarefa tarefa, AppDbContext db) =>
+{
+    db.Tarefas.Add(tarefa);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/tarefas/{tarefa.Id}", tarefa);
+});
+
+app.MapPut("/tarefas/{id}", async (int id, Tarefa inputTarefa, AppDbContext db) =>
+{
+    var tarefa = await db.Tarefas.FindAsync(id);
+
+    if (tarefa is null) return Results.NotFound();
+
+    tarefa.Titulo = inputTarefa.Titulo;
+    tarefa.Descricao = inputTarefa.Descricao;
+    tarefa.Data = inputTarefa.Data;
+    tarefa.Concluida = inputTarefa.Concluida;
+
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+});
+
+app.MapDelete("/tarefas/{id}", async (int id, AppDbContext db) =>
+{
+    if (await db.Tarefas.FindAsync(id) is Tarefa tarefa)
+    {
+        db.Tarefas.Remove(tarefa);
+        await db.SaveChangesAsync();
+        return Results.Ok(tarefa);
+    }
+
+    return Results.NotFound();
+});
+
+app.Run();
+```
+
+### Etapa 5: Criar o Banco de Dados
+
+No Console do Gerenciador de Pacotes, execute os seguintes comandos para criar uma migração e atualizar o banco de dados:
+
+```sh
+Add-Migration InitialCreate
+Update-Database
+```
+
+### Etapa 6: Testar a API
+
+Use ferramentas como Postman ou o Swagger para testar os endpoints da API.
+
+### Etapa 7: (Opcional) Adicionar Swagger para Documentação
+
+Para facilitar o teste da API, você pode adicionar suporte ao Swagger:
+
+1. Adicione o pacote NuGet `Swashbuckle.AspNetCore`:
+   ```sh
+   Install-Package Swashbuckle.AspNetCore
+   ```
+
+2. Atualize o arquivo `Program.cs` para configurar o Swagger:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Adicionar serviços ao contêiner.
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+// Configurar Swagger
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// Mapear endpoints
+app.MapGet("/tarefas", async (AppDbContext db) =>
+{
+    return await db.Tarefas.ToListAsync();
+});
+
+app.MapGet("/tarefas/{id}", async (int id, AppDbContext db) =>
+{
+    return await db.Tarefas.FindAsync(id)
+        is Tarefa tarefa ? Results.Ok(tarefa) : Results.NotFound();
+});
+
+app.MapPost("/tarefas", async (Tarefa tarefa, AppDbContext db) =>
+{
+    db.Tarefas.Add(tarefa);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/tarefas/{tarefa.Id}", tarefa);
+});
+
+app.MapPut("/tarefas/{id}", async (int id, Tarefa inputTarefa, AppDbContext db) =>
+{
+    var tarefa = await db.Tarefas.FindAsync(id);
+
+    if (tarefa is null) return Results.NotFound();
+
+    tarefa.Titulo = inputTarefa.Titulo;
+    tarefa.Descricao = inputTarefa.Descricao;
+    tarefa.Data = inputTarefa.Data;
+    tarefa.Concluida = inputTarefa.Concluida;
+
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+});
+
+app.MapDelete("/tarefas/{id}", async (int id, AppDbContext db) =>
+{
+    if (await db.Tarefas.FindAsync(id) is Tarefa tarefa)
+    {
+        db.Tarefas.Remove(tarefa);
+        await db.SaveChangesAsync();
+        return Results.Ok(tarefa);
+    }
+
+    return Results.NotFound();
+});
+
+app.Run();
+```
+
+### Conclusão
+
+Com essas etapas, você terá um sistema básico de agendamento de tarefas utilizando Minimal APIs com Entity Framework no ASP.NET Core. Este exemplo cobre as operações CRUD básicas e a configuração inicial. Dependendo das necessidades do seu projeto, você pode expandir esta implementação com recursos adicionais, como autenticação, validação, e muito mais.
